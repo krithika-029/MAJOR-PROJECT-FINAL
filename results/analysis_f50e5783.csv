@@ -1,0 +1,7 @@
+Field,Model Output,Manual Baseline,Difference
+Positive Cells,31,,
+Negative Cells,36,,
+Total Cells,67,,
+Ki-67 Index (%),46.27,,
+Classification,Malignant,,
+Quality Flagged,False,,Manual baseline unavailable

@@ -1,0 +1,7 @@
+Field,Model Output,Manual Baseline,Difference
+Positive Cells,33,32,1
+Negative Cells,109,106,3
+Total Cells,142,138,4
+Ki-67 Index (%),23.24,23.19,0.05
+Classification,Borderline Malignant,Borderline Malignant,Match
+Quality Flagged,False,,Within acceptable tolerance

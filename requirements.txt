@@ -1,0 +1,33 @@
+# Ki-67 Medical Diagnostic System - Requirements
+# Python 3.8+
+
+# Deep Learning Framework
+torch>=2.0.0
+torchvision>=0.15.0
+pytorch-lightning==1.9.5
+
+# Image Processing
+opencv-python>=4.8.0
+Pillow>=10.0.0
+scikit-image>=0.21.0
+scipy>=1.11.0
+numpy>=1.24.0
+
+# Medical Imaging
+h5py>=3.9.0
+
+# Computer Vision & Segmentation
+segmentation-models-pytorch>=0.3.3
+albumentations>=2.0.0
+
+# Web Framework
+Flask>=3.0.0
+Flask-CORS>=4.0.0
+
+# Utilities
+Werkzeug>=3.0.0
+python-dotenv>=1.0.0
+
+# Optional: PDF Generation
+reportlab>=4.0.0
+weasyprint>=60.0
