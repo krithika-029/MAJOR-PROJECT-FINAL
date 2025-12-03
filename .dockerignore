@@ -41,13 +41,18 @@ frontend-react/node_modules/
 .DS_Store
 Thumbs.db
 
-# Application data
+# Application data (exclude to reduce image size)
 ki67.db
 *.sqlite
 *.sqlite3
-uploads/
-results/
-data/
+uploads/*
+results/*
+data/BCData/*
+
+# Keep directory structure but not contents
+!uploads/.gitkeep
+!results/.gitkeep
+!data/.gitkeep
 
 # Logs
 *.log
