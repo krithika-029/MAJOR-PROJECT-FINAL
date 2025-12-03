@@ -1,5 +1,7 @@
 // API utilities for Ki-67 Analysis System
-const API_BASE_URL = '/api';  // Use proxy during development, direct path in production
+// Use environment variable for API URL (for split deployments like Vercel + Render)
+// Falls back to '/api' for local development or single-server deployment
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export interface AnalysisRequest {
   image: File;

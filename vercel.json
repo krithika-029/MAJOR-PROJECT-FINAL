@@ -1,0 +1,28 @@
+# Vercel Configuration for Ki-67 Frontend
+# This deploys only the React frontend
+
+{
+  "version": 2,
+  "buildCommand": "cd frontend-react && npm install && npm run build",
+  "outputDirectory": "frontend-react/dist",
+  "framework": "vite",
+  "installCommand": "cd frontend-react && npm install",
+  "devCommand": "cd frontend-react && npm run dev",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://ki67-backend.onrender.com/api/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ]
+}
