@@ -44,10 +44,20 @@ export function getAnalyses(): Analysis[] {
   return data ? JSON.parse(data) : [];
 }
 
+const MAX_HISTORY_ITEMS = 10;
+
 export function saveAnalysis(analysis: Analysis) {
+  // Strip heavy fields (images, coordinates) to avoid localStorage quota exceeded
+  const { images, cell_coordinates, ...minimal }: any = analysis;
+  
   const analyses = getAnalyses();
-  analyses.unshift(analysis);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(analyses));
+  // Remove duplicate if exists
+  const filtered = analyses.filter((a: any) => a.id !== minimal.id && a.analysis_id !== minimal.analysis_id);
+  filtered.unshift(minimal);
+  
+  // Cap to MAX_HISTORY_ITEMS to prevent storage overflow
+  const capped = filtered.slice(0, MAX_HISTORY_ITEMS);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(capped));
 }
 
 export function clearHistory() {

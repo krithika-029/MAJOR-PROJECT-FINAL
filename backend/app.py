@@ -33,6 +33,23 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image as ReportLabImage
 import json
+from sqlalchemy.orm import Session
+
+# Local DB modules with robust import fallback for script execution
+try:
+    from .db import Base, engine, SessionLocal
+    from .models import Upload, AnalysisResult
+except Exception:
+    import sys
+    # Ensure backend package and project root are importable when running as a script
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+    if CURRENT_DIR not in sys.path:
+        sys.path.insert(0, CURRENT_DIR)
+    if PROJECT_ROOT not in sys.path:
+        sys.path.insert(0, PROJECT_ROOT)
+    from backend.db import Base, engine, SessionLocal
+    from backend.models import Upload, AnalysisResult
 
 # ============================================================================
 # MODEL CLASSES (from training script)
@@ -770,6 +787,73 @@ def persist_analysis_results(response_data: Dict[str, Any]) -> Dict[str, Any]:
     return response_data
 
 
+def persist_analysis_to_db(response_data: Dict[str, Any], upload_path: str, saved_filename: str, original_filename: str) -> None:
+    """Store upload + analysis metadata into SQLite database."""
+    db: Session = SessionLocal()
+    try:
+        # Upload record
+        patient = response_data.get('patient_data', {})
+        upload = Upload(
+            original_filename=original_filename,
+            saved_filename=saved_filename,
+            upload_path=upload_path,
+            patient_id=patient.get('patient_id', ''),
+            patient_name=patient.get('patient_name', ''),
+            age=patient.get('age', ''),
+            gender=patient.get('gender', ''),
+            contact=patient.get('contact', ''),
+            exam_date=patient.get('exam_date', ''),
+            physician=patient.get('physician', ''),
+            clinical_notes=patient.get('clinical_notes', ''),
+        )
+        db.add(upload)
+        db.flush()  # get upload.id
+
+        # Model metrics
+        model_metrics = response_data.get('results', {})
+        diagnosis = model_metrics.get('diagnosis', {})
+        qc = (response_data.get('comparison') or {}).get('quality_control', {})
+        diffs = (qc or {}).get('differences', {})
+
+        analysis_id = response_data.get('analysis_id', '')
+        pdf_path = os.path.join(app.config['RESULTS_FOLDER'], f"analysis_{analysis_id}.pdf")
+        csv_path = os.path.join(app.config['RESULTS_FOLDER'], f"analysis_{analysis_id}.csv")
+        result_image_path = os.path.join(app.config['RESULTS_FOLDER'], f"result_{analysis_id}.png")
+
+        dataset_info = response_data.get('dataset', {})
+
+        analysis = AnalysisResult(
+            analysis_id=analysis_id,
+            upload_id=upload.id,
+            positive_cells=int(model_metrics.get('positive_cells', 0)),
+            negative_cells=int(model_metrics.get('negative_cells', 0)),
+            total_cells=int(model_metrics.get('total_cells', 0)),
+            ki67_index=float(model_metrics.get('ki67_index', 0.0)),
+            classification=str(diagnosis.get('classification', '')),
+            risk=str(diagnosis.get('risk', '')),
+            malignant=bool(diagnosis.get('malignant', False)),
+            qc_available=bool(qc.get('available', False)) if qc else False,
+            qc_flagged=bool(qc.get('flagged', False)) if qc else False,
+            qc_reason=str(qc.get('reason', '')) if qc else '',
+            qc_ki67_percent_delta=float(diffs.get('ki67_percent_delta', 0.0)) if diffs else 0.0,
+            qc_classification_match=bool(diffs.get('classification_match', True)) if diffs else True,
+            pdf_path=pdf_path,
+            csv_path=csv_path,
+            result_image_path=result_image_path,
+            dataset_source=str(dataset_info.get('source', '')),
+            dataset_subset=str(dataset_info.get('subset', '')),
+            dataset_image_name=str(dataset_info.get('image_name', '')),
+        )
+
+        db.add(analysis)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        print(f"⚠️ DB persist error: {exc}")
+    finally:
+        db.close()
+
+
 def create_visualization(image, pos_points, neg_points):
     """Create visualization with detected cells marked"""
     vis_image = image.copy()
@@ -911,6 +995,12 @@ def analyze():
         )
         response_data = persist_analysis_results(response_data)
 
+        # Persist to DB
+        try:
+            persist_analysis_to_db(response_data, upload_path=filepath, saved_filename=filename, original_filename=original_filename)
+        except Exception as _:
+            pass
+
         return jsonify(response_data)
     
     except Exception as e:
@@ -976,6 +1066,18 @@ def analyze_dataset_case():
         }
 
         response_data = persist_analysis_results(response_data)
+
+        # Persist to DB
+        try:
+            # For dataset cases, there is no actual uploaded file path; use image_path.
+            # Reconstruct path based on subset and image name used above.
+            dataset_image_path = os.path.join(DATASET_IMAGE_ROOT, subset, image_name)
+            persist_analysis_to_db(response_data,
+                                   upload_path=dataset_image_path,
+                                   saved_filename=image_name,
+                                   original_filename=image_name)
+        except Exception as _:
+            pass
 
         return jsonify(response_data)
 
@@ -1051,6 +1153,14 @@ def analyze_batch_cases():
             }
 
             analysis_result = persist_analysis_results(analysis_result)
+
+            try:
+                persist_analysis_to_db(analysis_result,
+                                       upload_path=image_path,
+                                       saved_filename=image_name,
+                                       original_filename=image_name)
+            except Exception as _:
+                pass
 
             qc = analysis_result['comparison']['quality_control']
             if qc.get('flagged'):
@@ -1188,6 +1298,14 @@ def analyze_batch_upload():
             }
 
             analysis_result = persist_analysis_results(analysis_result)
+
+            try:
+                persist_analysis_to_db(analysis_result,
+                                       upload_path=file_path,
+                                       saved_filename=f"{unique_id}_{filename}",
+                                       original_filename=filename)
+            except Exception as _:
+                pass
             batch_results.append(analysis_result)
 
         # Generate batch summary
@@ -1279,6 +1397,71 @@ def download_batch_summary(batch_id: str):
                      download_name=f"Ki67_Batch_Summary_{batch_id}.csv")
 
 
+@app.route('/api/history', methods=['GET'])
+def history():
+    """Return paginated recent analyses with basic metadata."""
+    try:
+        page = max(int(request.args.get('page', 1)), 1)
+        page_size = min(max(int(request.args.get('page_size', 10)), 1), 100)
+        offset = (page - 1) * page_size
+
+        db: Session = SessionLocal()
+        try:
+            total = db.query(AnalysisResult).count()
+            rows = (db.query(AnalysisResult)
+                      .order_by(AnalysisResult.created_at.desc())
+                      .offset(offset)
+                      .limit(page_size)
+                      .all())
+
+            items = []
+            for r in rows:
+                u = r.upload
+                items.append({
+                    'analysis_id': r.analysis_id,
+                    'created_at': r.created_at.isoformat(),
+                    'patient_name': u.patient_name if u else '',
+                    'patient_id': u.patient_id if u else '',
+                    'original_filename': u.original_filename if u else '',
+                    'saved_filename': u.saved_filename if u else '',
+                    'metrics': {
+                        'positive_cells': r.positive_cells,
+                        'negative_cells': r.negative_cells,
+                        'total_cells': r.total_cells,
+                        'ki67_index': r.ki67_index,
+                        'classification': r.classification,
+                        'risk': r.risk,
+                        'malignant': r.malignant,
+                    },
+                    'qc': {
+                        'available': r.qc_available,
+                        'flagged': r.qc_flagged,
+                        'reason': r.qc_reason,
+                        'ki67_percent_delta': r.qc_ki67_percent_delta,
+                        'classification_match': r.qc_classification_match,
+                    },
+                    'reports': {
+                        'pdf': f"/api/report/pdf/{r.analysis_id}",
+                        'csv': f"/api/report/csv/{r.analysis_id}"
+                    },
+                    'images': {
+                        'result': f"/results/result_{r.analysis_id}.png"
+                    }
+                })
+
+            return jsonify({
+                'page': page,
+                'page_size': page_size,
+                'total': total,
+                'items': items
+            })
+        finally:
+            db.close()
+    except Exception as e:
+        print(f"History error: {e}")
+        return jsonify({'error': 'Failed to fetch history'}), 500
+
+
 # ============================================================================
 # INITIALIZATION
 # ============================================================================
@@ -1328,6 +1511,13 @@ if __name__ == '__main__':
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['RESULTS_FOLDER'], exist_ok=True)
     
+    # Initialize DB (create tables if missing)
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("🗄️  SQLite DB initialized.")
+    except Exception as exc:
+        print(f"⚠️ DB init error: {exc}")
+
     # Initialize model
     if not initialize_model():
         print("❌ Failed to initialize model. Exiting.")

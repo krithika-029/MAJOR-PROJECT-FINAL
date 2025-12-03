@@ -296,3 +296,25 @@ For questions about this implementation or collaboration opportunities, please o
 
 **Note**: This is a research implementation. Not intended for clinical use without proper validation and regulatory approval.</content>
 <filePath>README.md
+ 
+## 🗄️ Database (optional)
+
+This web app can optionally persist uploads and analysis summaries to a local SQLite database (`ki67.db`) using SQLAlchemy.
+
+### Enable
+
+1. Install the extra dependency:
+    ```bash
+    pip install SQLAlchemy>=2.0
+    ```
+2. Run the backend normally. Tables are auto-created on startup.
+
+### What gets stored
+- Upload metadata (patient fields, filenames, paths)
+- Analysis metrics (counts, Ki-67 index, classification)
+- QC summary (flag, reason, deltas)
+- Output paths (PDF/CSV/result image)
+
+### Query recent analyses
+- REST: `GET /api/history?page=1&page_size=10`
+- Database file location: project root `ki67.db` (ignored by git)
