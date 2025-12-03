@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FileUpload from '../components/FileUpload';
 import Button from '../components/Button';
 import ResultsCard from '../components/ResultsCard';
@@ -10,6 +10,17 @@ import { analyzeImage, AnalysisResult, checkApiHealth } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { FileImage, AlertTriangle } from 'lucide-react';
+
+// Session storage keys
+const STORAGE_KEYS = {
+  PATIENT_ID: 'ki67_current_patient_id',
+  MANUAL_POSITIVE: 'ki67_current_manual_positive',
+  MANUAL_NEGATIVE: 'ki67_current_manual_negative',
+  NOTES: 'ki67_current_notes',
+  RESULTS: 'ki67_current_results',
+  FILE_DATA: 'ki67_current_file_data',
+  FILE_NAME: 'ki67_current_file_name',
+};
 
 export default function Analysis() {
   const navigate = useNavigate();
@@ -25,10 +36,78 @@ export default function Analysis() {
   const [error, setError] = useState<string | null>(null);
   const [apiAvailable, setApiAvailable] = useState(true);
 
-  // Check API availability on component mount
-  useState(() => {
+  // Restore data from sessionStorage when component mounts
+  useEffect(() => {
+    const restoreData = async () => {
+      try {
+        // Restore form data
+        const savedPatientId = sessionStorage.getItem(STORAGE_KEYS.PATIENT_ID);
+        const savedManualPositive = sessionStorage.getItem(STORAGE_KEYS.MANUAL_POSITIVE);
+        const savedManualNegative = sessionStorage.getItem(STORAGE_KEYS.MANUAL_NEGATIVE);
+        const savedNotes = sessionStorage.getItem(STORAGE_KEYS.NOTES);
+        const savedResults = sessionStorage.getItem(STORAGE_KEYS.RESULTS);
+        const savedFileData = sessionStorage.getItem(STORAGE_KEYS.FILE_DATA);
+        const savedFileName = sessionStorage.getItem(STORAGE_KEYS.FILE_NAME);
+
+        if (savedPatientId) setPatientId(savedPatientId);
+        if (savedManualPositive) setManualPositive(savedManualPositive);
+        if (savedManualNegative) setManualNegative(savedManualNegative);
+        if (savedNotes) setNotes(savedNotes);
+        if (savedResults) setResults(JSON.parse(savedResults));
+
+        // Restore uploaded file
+        if (savedFileData && savedFileName) {
+          const byteString = atob(savedFileData.split(',')[1]);
+          const mimeString = savedFileData.split(',')[0].split(':')[1].split(';')[0];
+          const ab = new ArrayBuffer(byteString.length);
+          const ia = new Uint8Array(ab);
+          for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+          }
+          const blob = new Blob([ab], { type: mimeString });
+          const file = new File([blob], savedFileName, { type: mimeString });
+          setSelectedFile(file);
+        }
+      } catch (error) {
+        console.error('Error restoring session data:', error);
+      }
+    };
+
+    restoreData();
     checkApiHealth().then(setApiAvailable);
-  });
+  }, []);
+
+  // Save data to sessionStorage whenever it changes
+  useEffect(() => {
+    if (patientId) sessionStorage.setItem(STORAGE_KEYS.PATIENT_ID, patientId);
+  }, [patientId]);
+
+  useEffect(() => {
+    if (manualPositive) sessionStorage.setItem(STORAGE_KEYS.MANUAL_POSITIVE, manualPositive);
+  }, [manualPositive]);
+
+  useEffect(() => {
+    if (manualNegative) sessionStorage.setItem(STORAGE_KEYS.MANUAL_NEGATIVE, manualNegative);
+  }, [manualNegative]);
+
+  useEffect(() => {
+    if (notes) sessionStorage.setItem(STORAGE_KEYS.NOTES, notes);
+  }, [notes]);
+
+  useEffect(() => {
+    if (results) sessionStorage.setItem(STORAGE_KEYS.RESULTS, JSON.stringify(results));
+  }, [results]);
+
+  useEffect(() => {
+    if (selectedFile) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        sessionStorage.setItem(STORAGE_KEYS.FILE_DATA, reader.result as string);
+        sessionStorage.setItem(STORAGE_KEYS.FILE_NAME, selectedFile.name);
+      };
+      reader.readAsDataURL(selectedFile);
+    }
+  }, [selectedFile]);
 
   const handleAnalyze = async () => {
     if (!selectedFile) {
@@ -91,6 +170,21 @@ export default function Analysis() {
     saveAnalysis(analysis);
     setSavedAnalysis(analysis);
     alert('Analysis saved to history!');
+  };
+
+  const handleClearSession = () => {
+    // Clear all session storage
+    Object.values(STORAGE_KEYS).forEach(key => sessionStorage.removeItem(key));
+    
+    // Reset all state
+    setSelectedFile(null);
+    setPatientId('');
+    setManualPositive('');
+    setManualNegative('');
+    setNotes('');
+    setResults(null);
+    setSavedAnalysis(null);
+    setError(null);
   };
 
   return (
@@ -232,12 +326,23 @@ export default function Analysis() {
                 />
               </div>
 
-              <Button
-                onClick={handleAnalyze}
-                disabled={analyzing || !patientId}
-              >
-                {analyzing ? 'Analyzing...' : 'Analyze'}
-              </Button>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={analyzing || !patientId}
+                  className="flex-1"
+                >
+                  {analyzing ? 'Analyzing...' : 'Analyze'}
+                </Button>
+                <Button
+                  onClick={handleClearSession}
+                  variant="secondary"
+                  disabled={analyzing}
+                  className="flex-shrink-0"
+                >
+                  Clear Form
+                </Button>
+              </div>
             </div>
           </div>
         </div>
