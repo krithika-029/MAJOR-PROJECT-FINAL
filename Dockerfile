@@ -1,6 +1,6 @@
 # Multi-stage Docker build for Ki-67 Medical Diagnostic System
 # Stage 1: Build React frontend
-FROM node:18-alpine AS frontend-builder
+FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
@@ -15,15 +15,15 @@ RUN npm run build
 # Stage 2: Python backend with model
 FROM python:3.11-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+    # Install system dependencies for OpenCV
+    RUN apt-get update && apt-get install -y \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
+        libgomp1 \
+        && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
