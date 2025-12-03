@@ -17,7 +17,7 @@ RUN npm run build
 # Stage 2: Python backend with model
 FROM python:3.11-slim
 
-# Install system dependencies for OpenCV (minimal)
+# Install system dependencies for OpenCV and Git LFS (minimal)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
@@ -25,6 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     libgomp1 \
+    git \
+    git-lfs \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -38,14 +41,14 @@ RUN pip install --no-cache-dir \
     -f https://download.pytorch.org/whl/torch_stable.html \
     && pip cache purge
 
-# Install remaining dependencies without PyTorch (already installed)
+# Install remaining dependencies with NumPy 1.x (required for compatibility)
 RUN pip install --no-cache-dir \
+    "numpy>=1.24.0,<2.0.0" \
     pytorch-lightning==1.9.5 \
     opencv-python-headless>=4.8.0 \
     Pillow>=10.0.0 \
     scikit-image>=0.21.0 \
     scipy>=1.11.0 \
-    numpy>=1.24.0 \
     h5py>=3.9.0 \
     segmentation-models-pytorch>=0.3.3 \
     albumentations>=2.0.0 \
@@ -60,8 +63,16 @@ RUN pip install --no-cache-dir \
 # Copy backend code
 COPY backend/ ./backend/
 
-# Copy model checkpoint
+# Copy model checkpoint (handle Git LFS)
 COPY models/ ./models/
+
+# Verify model checkpoint is valid (not a Git LFS pointer)
+RUN if head -n 1 ./models/ki67-point-epoch=68-val_peak_f1_avg=0.8503.ckpt | grep -q "version https://git-lfs.github.com"; then \
+        echo "ERROR: Model checkpoint is a Git LFS pointer file!"; \
+        echo "Please ensure Git LFS is configured and files are pulled before building."; \
+        exit 1; \
+    fi && \
+    echo "✓ Model checkpoint verified ($(du -h ./models/ki67-point-epoch=68-val_peak_f1_avg=0.8503.ckpt | cut -f1))"
 
 # Copy frontend build from stage 1
 COPY --from=frontend-builder /app/frontend/dist ./frontend-react/dist
